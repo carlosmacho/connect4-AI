@@ -1,3 +1,4 @@
+from platform import win32_is_iot
 from random import Random
 from re import A
 from tkinter.tix import Balloon
@@ -73,12 +74,12 @@ def evaluate_window(window, piece):
     if window.count(piece) == 4:
         score += 100
     elif window.count(piece) == 3 and window.count(EMPTY) == 1:
-        score += 10
-    elif window.count(piece) == 2 and window.count(EMPTY) == 2:
         score += 5
+    elif window.count(piece) == 2 and window.count(EMPTY) == 2:
+        score += 2
 
     if window.count(opp_piece) == 3 and window.count(EMPTY) == 1:
-        score -= 80
+        score -= 4
 
     return score
 
@@ -88,7 +89,7 @@ def score_position(board, piece):
     # Score Center
     center_array = [int(i) for i in list(board[:,COLUMN_COUNT//2])]
     center_count = center_array.count(piece)
-    score += center_count * 6
+    score += center_count * 3
 
     ## Score Horizontal
     for r in range(ROW_COUNT):
@@ -138,6 +139,53 @@ def score_position(board, piece):
                             
     return score
    
+def is_terminal_node(board):
+    return winning_move(board, PLAYER_PIECE) or winning_move(board, AI_PIECE) or len(get_valid_locations(board)) == 0
+
+def minimax(board, depth, alpha, beta, maximizingPlayer):
+    valid_locations = get_valid_locations(board)
+    is_terminal = is_terminal_node(board)
+    if depth == 0 or is_terminal:
+        if is_terminal:
+            if winning_move(board, AI_PIECE):
+                return (None, 100000000000)
+            elif winning_move(board, PLAYER_PIECE):
+                return (None, -10000000000)
+            else: # Game is over, no more valid moves
+                return (None, 0)
+        else: # Depth is zero
+            return (None, score_position(board, AI_PIECE))
+    if maximizingPlayer:
+        value = -math.inf
+        column = random.choice(valid_locations)
+        for col in valid_locations:
+            row = get_next_open_row(board, col)
+            b_copy = board.copy()
+            drop_piece(b_copy, row, col, AI_PIECE)
+            new_score = minimax(b_copy, depth-1, alpha, beta, False)[1]
+            if new_score > value:
+                value = new_score
+                column = col
+            alpha = max(alpha, value)
+            if alpha >= beta:
+                break
+        return column, value
+
+    else: # Minimizing Player
+        value = math.inf
+        column = random.choice(valid_locations)
+        for col in valid_locations:
+            row = get_next_open_row(board, col)
+            b_copy = board.copy()
+            drop_piece(b_copy, row, col, PLAYER_PIECE)
+            new_score = minimax(b_copy, depth-1, alpha, beta, True)[1]
+            if new_score < value:
+                value = new_score
+                column = col
+            beta = min(beta, value)
+            if alpha >= beta:
+                break
+        return column, value
 
 def get_valid_locations(board):
     valid_locatins = []
@@ -234,10 +282,15 @@ while not game_over:
     if turn == AI and not game_over:
         # Random AI
         #col = random.randint(0, COLUMN_COUNT-1)
-        col = pick_best_move(board, AI_PIECE)
+
+        # Score Mechanism AI
+        #col = pick_best_move(board, AI_PIECE)
+
+        # Minimax Algorithm AI
+        col, minimax_score = minimax(board, 5, -math.inf, math.inf, True)
 
         if is_valid_location(board, col):
-            pygame.time.wait(500)
+            #pygame.time.wait(500)
             row = get_next_open_row(board, col)
             drop_piece(board, row, col, AI_PIECE)
 
