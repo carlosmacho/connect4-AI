@@ -1,4 +1,5 @@
 from random import Random
+from re import A
 from tkinter.tix import Balloon
 import numpy as np
 import random
@@ -16,6 +17,12 @@ COLUMN_COUNT = 7
 
 PLAYER = 0
 AI = 1
+
+EMPTY = 0
+PLAYER_PIECE = 1
+AI_PIECE = 2
+
+WINDOW_LENGHT = 4
 
 def create_board():
     board = np.zeros((ROW_COUNT,COLUMN_COUNT))
@@ -57,6 +64,103 @@ def winning_move(board, piece):
             if board[r][c] == piece and board[r-1][c+1] == piece and board[r-2][c+2] == piece and board[r-3][c+3] == piece:
                 return True
 
+def evaluate_window(window, piece):
+    score = 0
+    opp_piece = PLAYER_PIECE
+    if piece == PLAYER_PIECE:
+        opp_piece = AI_PIECE
+
+    if window.count(piece) == 4:
+        score += 100
+    elif window.count(piece) == 3 and window.count(EMPTY) == 1:
+        score += 10
+    elif window.count(piece) == 2 and window.count(EMPTY) == 2:
+        score += 5
+
+    if window.count(opp_piece) == 3 and window.count(EMPTY) == 1:
+        score -= 80
+
+    return score
+
+def score_position(board, piece):
+    score = 0
+
+    # Score Center
+    center_array = [int(i) for i in list(board[:,COLUMN_COUNT//2])]
+    center_count = center_array.count(piece)
+    score += center_count * 6
+
+    ## Score Horizontal
+    for r in range(ROW_COUNT):
+        row_array = [int(i) for i in list(board[r,:])]
+        for c in range(COLUMN_COUNT-3):
+            window = row_array[c:c+WINDOW_LENGHT]
+            score += evaluate_window(window, piece)
+
+            if window.count(piece) == 4:
+                score += 100
+            elif window.count(piece) == 3 and window.count(EMPTY) == 1:
+                score += 10
+
+    ## Score Vertical
+    for c in range(COLUMN_COUNT):
+        col_array = [int(i) for i in list(board[:,c])]
+        for r in range(ROW_COUNT-3):
+            window = col_array[r:r+WINDOW_LENGHT]
+            score += evaluate_window(window, piece)
+
+            if window.count(piece) == 4:
+                score += 100
+            elif window.count(piece) == 3 and window.count(EMPTY) == 1:
+                score += 10
+
+    ## Score positive sloped diagonal
+    for r in range(ROW_COUNT-3):
+        for c in range(COLUMN_COUNT-3):
+            window = [board[r+i][c+i] for i in range(WINDOW_LENGHT)]
+            score += evaluate_window(window, piece)
+            
+            if window.count(piece) == 4:
+                score += 100
+            elif window.count(piece) == 3 and window.count(EMPTY) == 1:
+                score += 10
+
+    ## Score negative sloped diagonal
+    for r in range(ROW_COUNT-3):
+        for c in range(COLUMN_COUNT-3):
+            window = [board[r+3-i][c+i] for i in range(WINDOW_LENGHT)]
+            score += evaluate_window(window, piece)
+
+            if window.count(piece) == 4:
+                score += 100
+            elif window.count(piece) == 3 and window.count(EMPTY) == 1:
+                score += 10
+                            
+    return score
+   
+
+def get_valid_locations(board):
+    valid_locatins = []
+    for col in range(COLUMN_COUNT):
+        if is_valid_location(board, col):
+            valid_locatins.append(col)
+    return valid_locatins
+
+def pick_best_move(board, piece):
+    valid_locations = get_valid_locations(board)
+    best_score = -1000
+    best_col = random.choice(valid_locations)
+    for col in valid_locations:
+        row = get_next_open_row(board, col)
+        temp_board = board.copy()
+        drop_piece(temp_board, row, col, piece)
+        score = score_position(temp_board, piece)
+        if score > best_score:
+            best_score = score
+            best_col = col
+
+    return best_col
+
 def draw_board(board):
     for c in range(COLUMN_COUNT):
         for r in range(ROW_COUNT):
@@ -65,9 +169,9 @@ def draw_board(board):
 
     for c in range(COLUMN_COUNT):
         for r in range(ROW_COUNT):
-            if board[r][c] == 1:
+            if board[r][c] == PLAYER_PIECE:
                 pygame.draw.circle(screen, RED, (int(c*SQUARESIZE+SQUARESIZE/2), height-int(r*SQUARESIZE+SQUARESIZE/2)), RADIUS)
-            elif board[r][c] == 2:
+            elif board[r][c] == AI_PIECE:
                 pygame.draw.circle(screen, YELLOW, (int(c*SQUARESIZE+SQUARESIZE/2), height-int(r*SQUARESIZE+SQUARESIZE/2)), RADIUS)       
     pygame.display.update()
 
@@ -102,7 +206,7 @@ while not game_over:
                 pygame.draw.circle(screen, RED, (posx, int(SQUARESIZE/2)), RADIUS)
 
         pygame.display.update()
-        
+
         if event.type == pygame.MOUSEBUTTONDOWN:
             pygame.draw.rect(screen, BLACK, (0,0, width, SQUARESIZE))
             # print(event.pos)
@@ -113,9 +217,9 @@ while not game_over:
 
                 if is_valid_location(board, col):
                     row = get_next_open_row(board, col)
-                    drop_piece(board, row, col, 1)
+                    drop_piece(board, row, col, PLAYER_PIECE)
 
-                    if winning_move(board, 1):
+                    if winning_move(board, PLAYER_PIECE):
                         label = myfont.render("Player 1 wins!!", 1, RED)
                         screen.blit(label, (40,10))
                         game_over = True
@@ -128,15 +232,16 @@ while not game_over:
 
     # # Ask for Player 2 Input
     if turn == AI and not game_over:
-
-        col = random.randint(0, COLUMN_COUNT-1)
+        # Random AI
+        #col = random.randint(0, COLUMN_COUNT-1)
+        col = pick_best_move(board, AI_PIECE)
 
         if is_valid_location(board, col):
             pygame.time.wait(500)
             row = get_next_open_row(board, col)
-            drop_piece(board, row, col, 2)
+            drop_piece(board, row, col, AI_PIECE)
 
-            if winning_move(board, 2):
+            if winning_move(board, AI_PIECE):
                 label = myfont.render("Player 2 wins!!", 1, YELLOW)
                 screen.blit(label, (40,10))
                 game_over = True
